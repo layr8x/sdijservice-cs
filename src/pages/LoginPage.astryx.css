@@ -1,0 +1,14 @@
+/* src/pages/LoginPage.astryx.css — 색·간격은 전부 Astryx 토큰(var)만 사용 */
+.login-shell {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-6);
+  background: var(--color-background-secondary);
+}
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  padding: var(--spacing-8) var(--spacing-6);
+}
