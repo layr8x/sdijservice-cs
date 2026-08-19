@@ -5,8 +5,6 @@ import { Outlet, useLocation, Link as RRLink, useNavigate } from 'react-router-d
 import { useEffect } from 'react'
 import { Headset, ChatsCircle as Chats, Moon, Sun, SignOut as LogOut } from '@phosphor-icons/react'
 
-import { Theme } from '@astryxdesign/core/theme'
-import { neutralTheme } from '@astryxdesign/theme-neutral/built'
 import { LinkProvider } from '@astryxdesign/core/Link'
 import { AppShell, useAppShellMobile } from '@astryxdesign/core/AppShell'
 import { SideNav, SideNavSection, SideNavItem } from '@astryxdesign/core/SideNav'
@@ -18,7 +16,6 @@ import '@astryxdesign/theme-neutral/theme.css'
 
 import { useAuth } from '@/store/authStore'
 import { useDarkMode } from '@/hooks/useDarkMode'
-import { useAstryxMode } from '@/lib/astryxMode'
 import RouterLink from '@/components/RouterLink'
 import './AppLayout.astryx.css'
 
@@ -100,24 +97,22 @@ function CloseMobileNavOnNavigate() {
 }
 
 export default function AppLayout() {
-  const mode = useAstryxMode()
-
+  // <Theme> 는 App.jsx 가 라우터 전체를 감싸며 한 번만 건다(로그인 화면도 같은 테마를 받도록).
+  // 여기서 다시 감싸면 토큰이 중복 정의돼 모드 전환이 어긋날 수 있으므로 감싸지 않는다.
   return (
-    <Theme theme={neutralTheme} mode={mode}>
-      <LinkProvider component={RouterLink}>
-        <AppShell
-          height="fill"
-          contentPadding={0}
-          sideNav={<AppSideNav />}
-          topNav={<AppTopNav />}
-          mobileNav={{ hasToggle: true }}
-        >
-          <CloseMobileNavOnNavigate />
-          <div className="cs-content">
-            <Outlet />
-          </div>
-        </AppShell>
-      </LinkProvider>
-    </Theme>
+    <LinkProvider component={RouterLink}>
+      <AppShell
+        height="fill"
+        contentPadding={0}
+        sideNav={<AppSideNav />}
+        topNav={<AppTopNav />}
+        mobileNav={{ hasToggle: true }}
+      >
+        <CloseMobileNavOnNavigate />
+        <div className="cs-content">
+          <Outlet />
+        </div>
+      </AppShell>
+    </LinkProvider>
   )
 }

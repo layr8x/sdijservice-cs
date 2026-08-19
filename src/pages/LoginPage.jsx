@@ -33,7 +33,11 @@ export default function LoginPage() {
       await loginWithEmail(email, password)
       toast({ body: '로그인 성공' })
     } catch (err) {
-      toast({ body: '로그인 실패: ' + (err.message || '이메일/비밀번호를 확인하세요'), type: 'error' })
+      // 서버가 준 원문 오류를 그대로 보여주면 "이 이메일은 없는 계정" 같은 정보가 드러나
+      // 계정 목록을 추측하는 데 쓰일 수 있다. 사용자에게는 항상 같은 문구만 보여준다.
+      // (원인 파악에 필요한 원문은 브라우저 콘솔에만 남긴다.)
+      console.error('[login]', err)
+      toast({ body: '로그인하지 못했습니다. 이메일과 비밀번호를 확인해 주세요.', type: 'error' })
     } finally {
       setLoading(false)
     }

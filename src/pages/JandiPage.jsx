@@ -1,5 +1,7 @@
 // src/pages/JandiPage.jsx — /jandi
-// 잔디(JANDI) 5채널 대화 로그 뷰어 (jandi_messages, RLS anon read).
+// 잔디(JANDI) 5채널 대화 로그 뷰어 (jandi_messages).
+// 접근 제어: RLS 로 "로그인한 계정만 읽기"(익명 로그인 제외). 예전 주석에 'anon read'라 적혀
+// 있었으나 그건 폐기된 옛 설정이라 오해를 부른다 - supabase/migrations/0001 참고.
 // 방별 단일 타임라인(카카오의 채팅별 스레드와 다름) + 검색/기간 + 현재필터 CSV.
 //
 // sdij-wiki 의 AdminJandiPage 를 이 앱 목적에 맞게 축소 포팅. 실시간 활동 위젯과
@@ -43,8 +45,18 @@ const CHANNELS = [
   { id: '29522222', label: '전체공지' },
 ]
 const PAGE_SIZE = 50
+// 서버가 한 번의 요청으로 돌려주는 행 수 상한(Supabase 프로젝트 설정 Max Rows, 기본 1000).
+// 화면 목록은 limit 을 올려가며 더 받는 방식이라, 이 상한에 걸리면 "더 보기"를 눌러도 개수가
+// 안 늘어난다. 예전에는 그 시점에 버튼이 조용히 사라져 사용자가 "이게 전부"로 오해했다.
+// (CSV 다운로드에서 같은 상한 때문에 1000건에서 잘렸던 실제 사고와 뿌리가 같다 - csvExport.js 참고.)
+const SERVER_ROW_CAP = 1000
+
 const NOW_Y = new Date().getFullYear()
-const YEARS = [NOW_Y, NOW_Y - 1, NOW_Y - 2]
+// ⚠️ 예전에는 [올해, 작년, 재작년] 3년으로 고정돼 있었다. 수집 데이터는 2023-12 부터 있는데
+//    해가 바뀌면 목록에서 옛 연도가 조용히 사라져, 그 해 데이터에 도달할 방법이 아예 없어진다.
+//    (2026년 기준 이미 2023년이 빠져 있었다.) 수집 시작 연도부터 올해까지 전부 만든다.
+const DATA_START_YEAR = 2023
+const YEARS = Array.from({ length: Math.max(1, NOW_Y - DATA_START_YEAR + 1) }, (_, i) => NOW_Y - i)
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
 const YEAR_OPTIONS = [{ value: 'all', label: '전체기간' }, ...YEARS.map((y) => ({ value: String(y), label: `${y}년` }))]
 const MONTH_OPTIONS = [{ value: 'all', label: '전체월' }, ...MONTHS.map((m) => ({ value: m, label: `${Number(m)}월` }))]
@@ -254,6 +266,11 @@ export default function JandiPage() {
   const qc = useQueryClient()
   const { data: rows = [], isLoading, isFetching, isError, error, dataUpdatedAt, refetch } = useMessages(channel, query, year, month, limit)
 
+  // 서버 상한(SERVER_ROW_CAP)에 걸려 더는 못 받는 상태인지 판정한다.
+  // 요청한 limit 보다 적게 왔는데 그 개수가 상한과 같다면, 데이터가 없어서가 아니라
+  // 서버가 잘라서 준 것이다 - 이때는 "더 보기"를 눌러도 개수가 안 늘어나므로 안내를 띄운다.
+  const serverCapped = !isLoading && !isError && rows.length < limit && rows.length >= SERVER_ROW_CAP
+
   const reset = () => setLimit(PAGE_SIZE)
   const hasFilter = Boolean(query) || year !== 'all' || month !== 'all'
   const clearFilters = () => { setInput(''); setQuery(''); setYear('all'); setMonth('all'); reset() }
@@ -428,6 +445,15 @@ export default function JandiPage() {
             {!isLoading && !isError && rows.length >= limit && (
               <HStack hAlign="center" className="aj-more">
                 <Button label={`더 보기 (+${PAGE_SIZE})`} variant="secondary" size="sm" onClick={() => setLimit((l) => l + PAGE_SIZE)} />
+              </HStack>
+            )}
+
+            {serverCapped && (
+              <HStack hAlign="center" className="aj-more">
+                <Text type="supporting" size="sm">
+                  화면에는 한 번에 {SERVER_ROW_CAP.toLocaleString('ko-KR')}건까지만 표시됩니다.
+                  기간·검색으로 범위를 좁히거나, CSV 전체 다운로드를 이용해 주세요.
+                </Text>
               </HStack>
             )}
           </div>
