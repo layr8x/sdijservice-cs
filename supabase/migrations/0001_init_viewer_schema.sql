@@ -74,6 +74,13 @@ create table if not exists public.kakao_partner_messages (
   sentiment_model         text
 );
 
+-- ⚠️ chat_id 에 외래키(FK)를 일부러 걸지 않았다.
+--    원본 시스템에는 FK 가 있었고, 그 때문에 "처음 보는 대화방의 메시지를 먼저 넣으면 그 묶음이
+--    통째로 실패 → 커서만 최신이 되어 영구 유실"이라는 사고가 났다(646개 대화방).
+--    FK 가 없으면 최악의 경우 대화방 정보가 없는 메시지가 남을 뿐이고(닉네임이 빈칸으로 보임),
+--    FK 가 있으면 최악의 경우 메시지가 영구히 사라진다. 유실이 더 나쁘므로 FK 를 걸지 않는다.
+--    (수집기와 kakao-ingest 는 그와 별개로 "대화방 먼저, 메시지 나중" 순서를 지킨다.)
+
 -- ⚠️ 이 두 색인이 없으면 화면 조회와 CSV 다운로드가 타임아웃난다. 원본에서 실제로 겪은 사고다
 --    (색인이 안 맞아 조회 하나가 20초까지 걸려 화면에 500 오류가 났다).
 create index if not exists idx_kakao_partner_messages_profile_time
@@ -108,6 +115,56 @@ create index if not exists idx_jandi_messages_team_time
   on public.jandi_messages (team_id, created_at desc);
 create index if not exists idx_jandi_messages_reply_to
   on public.jandi_messages (reply_to_message_id) where reply_to_message_id is not null;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3-1. 수집 상태 (지금 수집이 살아 있나)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- kakao-ingest 가 저장에 성공할 때마다 여기에 시각을 남긴다. 이 표가 없으면 함수는 그냥
+-- 조용히 넘어가므로 수집은 되지만 "언제 마지막으로 들어왔는지"를 알 방법이 사라진다.
+-- 장애를 눈치채지 못하는 것이 이 시스템의 가장 큰 위험이라 반드시 함께 만든다.
+
+create table if not exists public.kakao_partner_stream_state (
+  profile_id        text primary key,
+  last_heartbeat_at timestamptz,
+  last_error        text,
+  last_error_at     timestamptz,
+  total_messages    bigint default 0
+);
+
+alter table public.kakao_partner_stream_state enable row level security;
+
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename='kakao_partner_stream_state' and policyname='auth_read_stream_state') then
+    create policy "auth_read_stream_state" on public.kakao_partner_stream_state
+      for select to authenticated
+      using (((select (auth.jwt() ->> 'is_anonymous'))::boolean) is not true);
+  end if;
+end $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 3-2. 수집 키 보관함
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 카카오 수집(kakao-ingest 함수)이 "누가 보낸 것인지" 확인하는 데 쓰는 키를 여기 둔다.
+-- 이 표는 절대 브라우저에서 읽히면 안 된다 → RLS 를 켜고 정책은 하나도 만들지 않는다.
+-- 정책이 없으면 공개 키로는 아무것도 못 읽는다. 서버 함수는 service_role 로 동작해
+-- RLS 를 우회하므로 정상적으로 읽는다.
+
+create table if not exists public.kakao_partner_secrets (
+  key        text primary key,
+  value      text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.kakao_partner_secrets enable row level security;
+-- (정책 없음이 의도된 설계다. 여기에 select 정책을 추가하면 키가 그대로 유출된다.)
+
+-- 수집 키를 자동으로 만들어 둔다. 이미 있으면 그대로 둔다(다시 실행해도 안전).
+create extension if not exists pgcrypto with schema extensions;
+
+insert into public.kakao_partner_secrets (key, value)
+values ('kakao_ingest_token', encode(extensions.gen_random_bytes(24), 'hex'))
+on conflict (key) do nothing;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 4. 접근 규칙 (RLS = Row Level Security, 누가 어떤 행을 볼 수 있는지 정하는 규칙)
@@ -151,8 +208,9 @@ end $$;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- (1) RLS 가 3개 표 모두에 켜졌는지:
 --     select relname, relrowsecurity from pg_class
---     where relname in ('kakao_partner_chats','kakao_partner_messages','jandi_messages');
---     → relrowsecurity 가 전부 true 여야 한다.
+--     where relname in ('kakao_partner_chats','kakao_partner_messages','jandi_messages',
+--                       'kakao_partner_stream_state','kakao_partner_secrets');
+--     → relrowsecurity 가 전부 true 여야 한다(5개).
 --
 -- (2) 정책이 3개 다 생겼는지:
 --     select tablename, policyname from pg_policies
@@ -162,3 +220,11 @@ end $$;
 --     curl "https://<프로젝트>.supabase.co/rest/v1/kakao_partner_messages?select=log_id&limit=1" \
 --          -H "apikey: <공개키>"
 --     → 빈 배열 [] 이 나와야 정상이다. 데이터가 나오면 RLS 가 잘못된 것이니 즉시 조치할 것.
+--
+-- (4) 수집 키 보관함이 공개 키로 안 읽히는지도 같은 방법으로 확인:
+--     curl "https://<프로젝트>.supabase.co/rest/v1/kakao_partner_secrets?select=key" \
+--          -H "apikey: <공개키>"
+--     → 빈 배열 [] 이어야 한다. 값이 나오면 실수로 정책을 추가한 것이니 즉시 지울 것.
+--
+-- (5) 배부할 수집 키 확인 (이 값을 /collect 화면에 넣는다):
+--     select value from public.kakao_partner_secrets where key = 'kakao_ingest_token';
