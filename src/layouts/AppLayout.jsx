@@ -3,7 +3,7 @@
 // 브레드크럼·역할 필터링·"사용자 사이트로 나가기" 링크 없이 로그아웃 버튼만 둔다.
 import { Outlet, useLocation, Link as RRLink, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
-import { Headset, ChatsCircle as Chats, Moon, Sun, SignOut as LogOut } from '@phosphor-icons/react'
+import { Headset, ChatsCircle as Chats, CloudArrowUp, Moon, Sun, SignOut as LogOut } from '@phosphor-icons/react'
 
 import { LinkProvider } from '@astryxdesign/core/Link'
 import { AppShell, useAppShellMobile } from '@astryxdesign/core/AppShell'
@@ -24,6 +24,11 @@ const NAV_ITEMS = [
   { title: '잔디 대화', to: '/jandi', icon: Chats },
 ]
 
+// 조회가 아니라 "데이터를 모으는 쪽" 설정이라 섹션을 나눈다.
+const SETUP_ITEMS = [
+  { title: '수집 설정', to: '/collect', icon: CloudArrowUp },
+]
+
 function AppSideNav() {
   const { pathname } = useLocation()
   return (
@@ -41,6 +46,17 @@ function AppSideNav() {
     >
       <SideNavSection title="조회">
         {NAV_ITEMS.map(item => (
+          <SideNavItem
+            key={item.to}
+            href={item.to}
+            icon={item.icon}
+            label={item.title}
+            isSelected={pathname === item.to}
+          />
+        ))}
+      </SideNavSection>
+      <SideNavSection title="설정">
+        {SETUP_ITEMS.map(item => (
           <SideNavItem
             key={item.to}
             href={item.to}

@@ -27,14 +27,22 @@ export default defineConfig([
     },
   },
   {
-    // 크롬 확장(extension/)은 웹앱이 아니라 브라우저 확장 환경에서 돈다.
-    // chrome.* API 를 쓰고 React 는 쓰지 않으므로 그에 맞춰 규칙을 조정한다.
-    files: ['extension/**/*.js'],
+    // 북마클릿 본체(public/kakao-collect.js)는 React 앱이 아니라 카카오 파트너센터 화면 안에서
+    // 도는 통짜 브라우저 스크립트다. import/export 없이 즉시 실행되므로 규칙을 따로 둔다.
+    files: ['public/kakao-collect.js'],
     languageOptions: {
-      globals: { ...globals.browser, ...globals.webextensions },
+      sourceType: 'script',
+      globals: globals.browser,
     },
     rules: {
       'react-refresh/only-export-components': 'off',
+      'no-empty': 'off',
     },
+  },
+  {
+    // 테스트는 Node 에서 돈다.
+    files: ['test/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+    rules: { 'react-refresh/only-export-components': 'off' },
   },
 ])

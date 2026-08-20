@@ -14,6 +14,7 @@ import AppLayout from '@/layouts/AppLayout'
 import LoginPage from '@/pages/LoginPage'
 import ConsultsPage from '@/pages/ConsultsPage'
 import JandiPage from '@/pages/JandiPage'
+import CollectPage from '@/pages/CollectPage'
 import './App.astryx.css'
 
 const queryClient = new QueryClient({
@@ -53,6 +54,7 @@ export default function App() {
                       <Route index element={<Navigate to="/consults" replace />} />
                       <Route path="/consults" element={<ConsultsPage />} />
                       <Route path="/jandi" element={<JandiPage />} />
+                      <Route path="/collect" element={<CollectPage />} />
                     </Route>
                   </Route>
                   <Route path="*" element={<Navigate to="/" replace />} />
