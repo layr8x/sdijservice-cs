@@ -103,15 +103,23 @@ npm test             # 수집 로직 검증 (유실 방지 규칙 포함)
 ## 5. 데이터베이스 준비
 
 `supabase/migrations/0001_init_viewer_schema.sql` 파일을 Supabase 대시보드의 SQL Editor에
-붙여넣고 실행하면 필요한 표 3개와 접근 규칙이 만들어집니다. 여러 번 실행해도 안전합니다.
+붙여넣고 실행하면 필요한 표와 접근 규칙, 수집 키까지 한 번에 만들어집니다.
+여러 번 실행해도 안전합니다.
 
 만들어지는 표:
 
-| 표 이름 | 내용 |
-|---|---|
-| `kakao_partner_chats` | 카카오 상담 대화방 목록 |
-| `kakao_partner_messages` | 카카오 상담 메시지 본문 |
-| `jandi_messages` | 잔디 대화 |
+| 표 이름 | 내용 | 브라우저에서 읽기 |
+|---|---|---|
+| `kakao_partner_chats` | 카카오 상담 대화방 목록 | 로그인한 사람만 |
+| `kakao_partner_messages` | 카카오 상담 메시지 본문 | 로그인한 사람만 |
+| `jandi_messages` | 잔디 대화 | 로그인한 사람만 |
+| `kakao_partner_secrets` | 수집 키 | **아무도 못 읽음** (서버만) |
+
+실행이 끝나면 아래로 **배부할 수집 키**를 확인합니다. 이 값을 `/collect` 화면에 넣습니다.
+
+```sql
+select value from public.kakao_partner_secrets where key = 'kakao_ingest_token';
+```
 
 ### 반드시 확인할 것: 접근 규칙(RLS)
 
@@ -125,9 +133,23 @@ npm test             # 수집 로직 검증 (유실 방지 규칙 포함)
 ```bash
 curl "https://<프로젝트ID>.supabase.co/rest/v1/kakao_partner_messages?select=log_id&limit=1" \
      -H "apikey: <공개키>"
+
+curl "https://<프로젝트ID>.supabase.co/rest/v1/kakao_partner_secrets?select=key" \
+     -H "apikey: <공개키>"
 ```
 
-빈 배열 `[]` 이 나와야 정상입니다. 데이터가 나오면 규칙이 안 걸린 것이니 즉시 조치해야 합니다.
+둘 다 빈 배열 `[]` 이 나와야 정상입니다. 데이터가 나오면 규칙이 안 걸린 것이니 즉시 조치해야 합니다.
+
+이 SQL 은 실제 PostgreSQL 16 에 두 번 실행해 다음을 확인했습니다.
+로그인 안 한 사람은 상담을 0건 읽고, 로그인한 사람은 읽되 지우지는 못하며,
+수집 키는 로그인 여부와 무관하게 아무도 못 읽고, 서버 함수만 읽고 쓸 수 있습니다.
+
+### 주의: 무료 요금제는 활성 프로젝트 2개까지
+
+Supabase 무료 요금제는 **한 사람이 소유한 활성 프로젝트가 2개**로 제한됩니다. 이미 2개를
+쓰고 있는 계정에서는 새 프로젝트를 만들거나 정지된 프로젝트를 깨울 수 없습니다.
+이 앱은 회사 공용 계정(`sdijservice@gmail.com`)으로 **별도 가입**해 쓰는 것을 전제로 합니다.
+그러면 그 계정이 자기 몫의 무료 2개를 새로 받습니다.
 
 ### 로그인 계정 만들기
 

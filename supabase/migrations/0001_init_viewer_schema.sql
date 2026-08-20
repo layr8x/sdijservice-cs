@@ -110,6 +110,30 @@ create index if not exists idx_jandi_messages_reply_to
   on public.jandi_messages (reply_to_message_id) where reply_to_message_id is not null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 3-2. 수집 키 보관함
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 카카오 수집(kakao-ingest 함수)이 "누가 보낸 것인지" 확인하는 데 쓰는 키를 여기 둔다.
+-- 이 표는 절대 브라우저에서 읽히면 안 된다 → RLS 를 켜고 정책은 하나도 만들지 않는다.
+-- 정책이 없으면 공개 키로는 아무것도 못 읽는다. 서버 함수는 service_role 로 동작해
+-- RLS 를 우회하므로 정상적으로 읽는다.
+
+create table if not exists public.kakao_partner_secrets (
+  key        text primary key,
+  value      text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.kakao_partner_secrets enable row level security;
+-- (정책 없음이 의도된 설계다. 여기에 select 정책을 추가하면 키가 그대로 유출된다.)
+
+-- 수집 키를 자동으로 만들어 둔다. 이미 있으면 그대로 둔다(다시 실행해도 안전).
+create extension if not exists pgcrypto with schema extensions;
+
+insert into public.kakao_partner_secrets (key, value)
+values ('kakao_ingest_token', encode(extensions.gen_random_bytes(24), 'hex'))
+on conflict (key) do nothing;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 4. 접근 규칙 (RLS = Row Level Security, 누가 어떤 행을 볼 수 있는지 정하는 규칙)
 -- ─────────────────────────────────────────────────────────────────────────────
 -- ★★ 이 부분을 빼먹으면 안 된다. 이 앱은 브라우저에서 공개 키(anon key)로 표를 직접 읽는다.
@@ -162,3 +186,11 @@ end $$;
 --     curl "https://<프로젝트>.supabase.co/rest/v1/kakao_partner_messages?select=log_id&limit=1" \
 --          -H "apikey: <공개키>"
 --     → 빈 배열 [] 이 나와야 정상이다. 데이터가 나오면 RLS 가 잘못된 것이니 즉시 조치할 것.
+--
+-- (4) 수집 키 보관함이 공개 키로 안 읽히는지도 같은 방법으로 확인:
+--     curl "https://<프로젝트>.supabase.co/rest/v1/kakao_partner_secrets?select=key" \
+--          -H "apikey: <공개키>"
+--     → 빈 배열 [] 이어야 한다. 값이 나오면 실수로 정책을 추가한 것이니 즉시 지울 것.
+--
+-- (5) 배부할 수집 키 확인 (이 값을 /collect 화면에 넣는다):
+--     select value from public.kakao_partner_secrets where key = 'kakao_ingest_token';

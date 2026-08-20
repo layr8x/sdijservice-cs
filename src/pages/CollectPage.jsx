@@ -43,11 +43,14 @@ const CHANNELS = [
   { id: '_rkbcn', label: '통합로그인' },
 ]
 
-const TOKEN_SQL = `insert into kakao_partner_secrets (key, value)
-values ('kakao_ingest_token', encode(gen_random_bytes(24), 'hex'))
-on conflict (key) do nothing;
+// 수집 키는 설치 SQL(0001_init_viewer_schema.sql)이 이미 만들어 둔다. 여기서는 꺼내 보기만 하면 된다.
+const TOKEN_SQL = `select value from public.kakao_partner_secrets
+where key = 'kakao_ingest_token';`
 
-select value from kakao_partner_secrets where key = 'kakao_ingest_token';`
+// 키가 유출됐을 때만 쓴다. 새 키로 바꾸면 기존 북마크는 전부 다시 배부해야 한다.
+const ROTATE_SQL = `update public.kakao_partner_secrets
+set value = encode(extensions.gen_random_bytes(24), 'hex'), updated_at = now()
+where key = 'kakao_ingest_token';`
 
 /**
  * 북마크에 넣을 한 줄짜리 명령을 만든다.
@@ -134,8 +137,8 @@ export default function CollectPage() {
         <VStack gap={3} hAlign="stretch">
           <Heading level={2}>1. 북마크 만들기 (관리자, 최초 1회)</Heading>
           <Text type="supporting" size="sm">
-            아래 두 칸을 채우면 배부할 북마크가 만들어집니다. 수집 키는 Supabase SQL Editor 에서
-            다음을 실행해 얻습니다.
+            아래 두 칸을 채우면 배부할 북마크가 만들어집니다. 수집 키는 설치 SQL 이 이미 만들어 두었으니,
+            Supabase SQL Editor 에서 다음을 실행해 꺼내 오기만 하면 됩니다.
           </Text>
           <pre className="collect-sql">{TOKEN_SQL}</pre>
 
@@ -226,7 +229,8 @@ export default function CollectPage() {
             <li>
               <b>수집 키는 북마크 주소 안에 들어갑니다.</b> 유출될 수 있다고 전제하고 만들었습니다.
               이 키로 할 수 있는 일은 상담 내용을 넣는 것 하나뿐이고 읽기, 삭제, 다른 표 접근은 되지 않습니다.
-              유출이 확인되면 위 SQL 의 값만 새로 만들면 됩니다.
+              유출이 확인되면 아래로 키만 새로 만들면 됩니다. 단 그 뒤에는 북마크를 전부 다시 배부해야 합니다.
+              <pre className="collect-sql">{ROTATE_SQL}</pre>
             </li>
             <li>
               <b>개인정보는 서버가 가립니다.</b> 이름, 전화번호, 이메일, 카드번호, 주민등록번호는
