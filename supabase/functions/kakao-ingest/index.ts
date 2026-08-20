@@ -194,17 +194,18 @@ Deno.serve(async (req: Request) => {
     const chats = Array.isArray(body?.chats) ? body.chats.slice(0, MAX_CHATS_PER_CALL) : [];
     const msgs = Array.isArray(body?.messages) ? body.messages.slice(0, MAX_MESSAGES_PER_CALL) : [];
 
-    // ⚠️ 부모(대화방) 먼저, 메시지 나중. kakao_partner_messages.chat_id 는 대화방을 참조하는
-    //    외래키라, 처음 보는 대화방의 메시지를 먼저 넣으면 그 묶음이 통째로 실패한다.
-    //    (원본 시스템에서 646개 대화방의 첫 메시지가 이 순서 때문에 영구 유실된 적이 있다.)
-    let chatsSaved = 0;
-    if (chats.length) {
-      const rows = chats.map((c: any) => chatToRow(c, profileId)).filter((r) => r.chat_id);
-      const { error } = await supabase.from('kakao_partner_chats').upsert(rows, { onConflict: 'chat_id' });
-      if (error) return json({ error: 'chats upsert: ' + error.message }, 500);
-      chatsSaved = rows.length;
-    }
-
+    // ★★ 순서가 곧 데이터 안전이다. 메시지 먼저, 대화방 나중. 절대 바꾸지 말 것.
+    //
+    //    대화방 행에는 last_log_id("여기까지 받았다" 표시)가 들어 있고, 다음 수집은 그 값을 보고
+    //    "바뀐 게 없다"고 판단한다. 그래서 대화방을 먼저 저장한 뒤 메시지 저장이 실패하면,
+    //    표시만 최신이 되어 그 상담을 영영 다시 가져오지 않는다.
+    //    (원본 시스템에서 이 구조로 646개 대화방의 메시지가 영구 유실됐다.)
+    //
+    //    메시지를 먼저 넣으면 최악의 경우가 뒤집힌다.
+    //      - 메시지 실패 → 대화방을 아예 안 씀 → 표시 그대로 → 다음 번에 다시 가져온다 (안전)
+    //      - 메시지 성공, 대화방 실패 → 표시가 안 올라감 → 다음 번에 또 보냄 → 덮어쓰기라 무해
+    //    이 순서가 가능한 이유는 messages.chat_id 에 외래키를 걸지 않았기 때문이다
+    //    (설치 SQL 0001 의 해당 주석 참고). 외래키를 다시 걸면 이 순서가 깨지므로 함께 검토할 것.
     let messagesSaved = 0;
     if (msgs.length) {
       const rows = msgs
@@ -217,6 +218,14 @@ Deno.serve(async (req: Request) => {
         if (error) return json({ error: 'messages upsert: ' + error.message, saved: messagesSaved }, 500);
         messagesSaved += slice.length;
       }
+    }
+
+    let chatsSaved = 0;
+    if (chats.length) {
+      const rows = chats.map((c: any) => chatToRow(c, profileId)).filter((r) => r.chat_id);
+      const { error } = await supabase.from('kakao_partner_chats').upsert(rows, { onConflict: 'chat_id' });
+      if (error) return json({ error: 'chats upsert: ' + error.message, messages: messagesSaved }, 500);
+      chatsSaved = rows.length;
     }
 
     // 누가·언제 넣었는지 기록해 "지금 수집이 살아 있나"를 화면에서 볼 수 있게 한다.
