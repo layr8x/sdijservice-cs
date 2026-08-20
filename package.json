@@ -11,7 +11,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node --test \"test/**/*.test.mjs\""
+    "test": "node --test \"test/**/*.test.mjs\" && node scripts/test-ingest.mjs",
+    "test:ingest": "node scripts/test-ingest.mjs"
   },
   "dependencies": {
     "@astryxdesign/core": "^0.1.3",
