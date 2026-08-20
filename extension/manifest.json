@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "시대인재 상담 수집",
+  "version": "1.0.0",
+  "description": "카카오 파트너센터에 로그인되어 있으면, 상담 내용을 자동으로 사내 데이터베이스에 모읍니다.",
+  "permissions": ["alarms", "storage"],
+  "host_permissions": [
+    "https://business.kakao.com/*",
+    "https://*.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "시대인재 상담 수집",
+    "default_popup": "popup.html"
+  }
+}
